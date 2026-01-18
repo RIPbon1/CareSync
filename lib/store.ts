@@ -1,9 +1,41 @@
 import { create } from 'zustand'
-import { Database } from './supabase'
+import { persist, createJSONStorage } from 'zustand/middleware'
 
-type Task = Database['public']['Tables']['tasks']['Row']
-type Member = Database['public']['Tables']['members']['Row']
-type Document = Database['public']['Tables']['documents']['Row']
+export interface Task {
+  id: string
+  family_id: string
+  document_id?: string | null
+  title: string
+  description?: string | null
+  priority: 'low' | 'medium' | 'high' | 'urgent' | string
+  status: 'pending' | 'assigned' | 'in_progress' | 'completed' | string
+  assigned_to?: string | null
+  due_date?: string | null
+  completed_at?: string | null
+  created_at: string
+}
+
+export interface Member {
+  id: string
+  family_id: string
+  user_id: string
+  name: string
+  email?: string | null
+  role: 'admin' | 'member' | string
+  avatar_url?: string | null
+  created_at: string
+}
+
+export interface Document {
+  id: string
+  family_id: string
+  uploaded_by: string
+  filename: string
+  file_url: string
+  document_type?: string | null
+  analysis_result?: any
+  created_at: string
+}
 
 interface AppState {
   // Current family
@@ -30,7 +62,7 @@ interface AppState {
   // UI State
   isChatOpen: boolean
   setChatOpen: (open: boolean) => void
-  
+
   isUploading: boolean
   setUploading: (uploading: boolean) => void
 
@@ -38,52 +70,94 @@ interface AppState {
   setSelectedTaskId: (taskId: string | null) => void
 }
 
-export const useAppStore = create<AppState>((set, get) => ({
-  // Current family
-  currentFamily: null,
-  setCurrentFamily: (familyId) => set({ currentFamily: familyId }),
+export const useAppStore = create<AppState>()(
+  persist(
+    (set, get) => ({
+      // Current family
+      currentFamily: 'local-family',
+      setCurrentFamily: (familyId) => set({ currentFamily: familyId }),
 
-  // Tasks
-  tasks: [],
-  setTasks: (tasks) => set({ tasks }),
-  addTask: (task) => set((state) => ({ tasks: [...state.tasks, task] })),
-  updateTask: (taskId, updates) =>
-    set((state) => ({
-      tasks: state.tasks.map((task) =>
-        task.id === taskId ? { ...task, ...updates } : task
-      ),
-    })),
-  removeTask: (taskId) =>
-    set((state) => ({
-      tasks: state.tasks.filter((task) => task.id !== taskId),
-    })),
+      // Tasks
+      tasks: [],
+      setTasks: (tasks) => set({ tasks }),
+      addTask: (task) => set((state) => ({ tasks: [task, ...state.tasks] })),
+      updateTask: (taskId, updates) =>
+        set((state) => ({
+          tasks: state.tasks.map((task) =>
+            task.id === taskId ? { ...task, ...updates } : task
+          ),
+        })),
+      removeTask: (taskId) =>
+        set((state) => ({
+          tasks: state.tasks.filter((task) => task.id !== taskId),
+        })),
 
-  // Members
-  members: [],
-  setMembers: (members) => set({ members }),
-  addMember: (member) => set((state) => ({ members: [...state.members, member] })),
+      // Members
+      members: [
+        {
+          id: 'me',
+          family_id: 'local-family',
+          user_id: 'local-user',
+          name: 'You',
+          email: 'you@example.com',
+          role: 'admin',
+          created_at: new Date().toISOString()
+        },
+        {
+          id: 'demo-mom',
+          family_id: 'local-family',
+          user_id: 'demo-mom',
+          name: 'Sarah (Caregiver)',
+          email: 'sarah@example.com',
+          role: 'admin',
+          created_at: new Date().toISOString()
+        },
+        {
+          id: 'demo-grandpa',
+          family_id: 'local-family',
+          user_id: 'demo-grandpa',
+          name: 'Grandpa John',
+          email: 'john@example.com',
+          role: 'member',
+          created_at: new Date().toISOString()
+        }
+      ],
+      setMembers: (members) => set({ members }),
+      addMember: (member) => set((state) => ({ members: [...state.members, member] })),
 
-  // Documents
-  documents: [],
-  setDocuments: (documents) => set({ documents }),
-  addDocument: (document) => set((state) => ({ documents: [...state.documents, document] })),
+      // Documents
+      documents: [],
+      setDocuments: (documents) => set({ documents }),
+      addDocument: (document) => set((state) => ({ documents: [...state.documents, document] })),
 
-  // UI State
-  isChatOpen: false,
-  setChatOpen: (open) => set({ isChatOpen: open }),
-  
-  isUploading: false,
-  setUploading: (uploading) => set({ isUploading: uploading }),
+      // UI State
+      isChatOpen: false,
+      setChatOpen: (open) => set({ isChatOpen: open }),
 
-  selectedTaskId: null,
-  setSelectedTaskId: (taskId) => set({ selectedTaskId: taskId }),
-}))
+      isUploading: false,
+      setUploading: (uploading) => set({ isUploading: uploading }),
+
+      selectedTaskId: null,
+      setSelectedTaskId: (taskId) => set({ selectedTaskId: taskId }),
+    }),
+    {
+      name: 'caresync-storage', // name of the item in the storage (must be unique)
+      storage: createJSONStorage(() => localStorage), // (optional) by default, 'localStorage' is used
+      partialize: (state) => ({
+        currentFamily: state.currentFamily,
+        tasks: state.tasks,
+        members: state.members,
+        documents: state.documents
+      }), // Only persist data, not UI state
+    }
+  )
+)
 
 // Selectors
 export const useCurrentTasks = () => {
   const tasks = useAppStore((state) => state.tasks)
   const currentFamily = useAppStore((state) => state.currentFamily)
-  
+
   return tasks.filter((task) => task.family_id === currentFamily)
 }
 
